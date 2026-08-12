@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Function to check if user is accessing their own document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection: Only the authenticated user matching userId can read/write
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+      
+      // Daily logs subcollection
+      match /daily_logs/{dateString} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Appointments collection: Only readable by the patient or doctor
+    match /appointments/{appointmentId} {
+      allow read, write: if isAuthenticated() && (
+        request.auth.uid == resource.data.patientId || 
+        request.auth.uid == resource.data.doctorId
+      );
+    }
+
+    // Whisper Room posts
+    match /whisper_posts/{postId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == request.resource.data.authorId;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,117 @@
+const admin = require("firebase-admin");
+const { GoogleGenAI } = require("@google/genai");
+
+// Automatically route Firestore to the local emulator when running `vercel dev`
+if (process.env.VERCEL_ENV !== 'production' && process.env.VERCEL_ENV !== 'preview') {
+  process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
+}
+
+// 1. Initialize Firebase Admin SDK (Singleton pattern)
+if (!admin.apps.length) {
+  // Use explicit credentials from env, falling back to application default credentials
+  const credentialConfig = process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_PROJECT_ID
+    ? {
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          // Handle newline characters in the private key from env
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        })
+      }
+    : undefined;
+
+  admin.initializeApp(credentialConfig);
+}
+
+const db = admin.firestore();
+
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey || apiKey === "your_gemini_api_key_here") {
+  console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in environment variables.");
+}
+
+// 2. Initialize Google Gen AI SDK
+const ai = new GoogleGenAI({
+  apiKey: apiKey
+});
+
+// Vercel Serverless Function Handler
+module.exports = async (req, res) => {
+  // CORS configuration (optional, recommended if called from a web app)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed. Use POST." });
+  }
+
+  try {
+    // 3. Accept userId and prompt from the request body
+    const { userId, prompt } = req.body;
+
+    if (!userId || !prompt) {
+      return res.status(400).json({ error: "Missing required fields: userId and prompt." });
+    }
+
+    // 4. Fetch the last 7 days of the user's daily_logs from Firestore
+    console.log(`Fetching health context for user: ${userId}`);
+    
+    // We calculate 7 days ago
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const timestampLimit = admin.firestore.Timestamp.fromDate(sevenDaysAgo);
+
+    const logsSnapshot = await db.collection("users")
+      .doc(userId)
+      .collection("daily_logs")
+      .where("timestamp", ">=", timestampLimit)
+      .orderBy("timestamp", "desc")
+      .get();
+
+    let healthContextStr = "User Health Data (Last 7 Days):\n";
+    if (logsSnapshot.empty) {
+      healthContextStr += "No recent health logs available.\n";
+    } else {
+      logsSnapshot.forEach(doc => {
+        const data = doc.data();
+        const date = data.timestamp ? data.timestamp.toDate().toLocaleDateString() : doc.id;
+        healthContextStr += `- Date: ${date} | Sleep: ${data.sleep_hours?.toFixed(1) || 'N/A'} hrs | Water: ${data.water_cups || 'N/A'} cups | Mood: ${data.mood || 'N/A'} | Steps: ${data.steps || 'N/A'}\n`;
+      });
+    }
+
+    // 5. Send combined context and prompt to Gemini using the latest SDK syntax
+    const systemInstruction = `You are Kyra, a supportive AI assistant for the SYNCO women's health platform. Use the following health context to personalize your response, but do not provide clinical medical diagnoses.`;
+    const combinedPrompt = `${systemInstruction}\n\n${healthContextStr}\n\nUser Question: ${prompt}`;
+    
+    console.log("Calling Gemini API with interactions.create...");
+    const interaction = await ai.interactions.create({
+      model: "gemini-2.5-flash", // Sticking to your requested model
+      input: combinedPrompt
+    });
+
+    const aiText = interaction.output_text;
+
+    // 6. Return response
+    return res.status(200).json({ 
+      success: true, 
+      response: aiText 
+    });
+
+  } catch (error) {
+    console.error("Error in Kyra AI Endpoint:", error);
+    return res.status(500).json({ 
+      error: "An internal server error occurred while processing the request.", 
+      details: error.message,
+      debug: {
+        hasKey: !!process.env.GEMINI_API_KEY,
+        keyLength: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0,
+        envVars: Object.keys(process.env).filter(k => k.includes('GEMINI'))
+      }
+    });
+  }
+};
