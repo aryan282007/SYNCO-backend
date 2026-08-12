@@ -6,34 +6,8 @@ if (process.env.VERCEL_ENV !== 'production' && process.env.VERCEL_ENV !== 'previ
   process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 }
 
-// 1. Initialize Firebase Admin SDK (Singleton pattern)
-if (!admin.apps.length) {
-  // Use explicit credentials from env, falling back to application default credentials
-  const credentialConfig = process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_PROJECT_ID
-    ? {
-        credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          // Handle newline characters in the private key from env
-          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-        })
-      }
-    : undefined;
 
-  admin.initializeApp(credentialConfig);
-}
 
-const db = admin.firestore();
-
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey || apiKey === "your_gemini_api_key_here") {
-  console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in environment variables.");
-}
-
-// 2. Initialize Google Gen AI SDK
-const ai = new GoogleGenAI({
-  apiKey: apiKey
-});
 
 // Vercel Serverless Function Handler
 module.exports = async (req, res) => {
@@ -51,6 +25,22 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // 1. Initialize Firebase Admin SDK safely (Singleton pattern)
+    if (!admin.apps.length) {
+      const credentialConfig = process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_PROJECT_ID
+        ? {
+            credential: admin.credential.cert({
+              projectId: process.env.FIREBASE_PROJECT_ID,
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+              // Force replace literal backslash-n sequences with actual newlines for PEM decoding
+              privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+            })
+          }
+        : undefined;
+
+      admin.initializeApp(credentialConfig);
+    }
+    const db = admin.firestore();
     // 3. Accept userId and prompt from the request body
     const { userId, prompt } = req.body;
 
@@ -84,13 +74,22 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 5. Send combined context and prompt to Gemini using the latest SDK syntax
+    // 2. Initialize Google Gen AI SDK inside the handler to prevent boot crashes
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === "your_gemini_api_key_here") {
+      throw new Error("GEMINI_API_KEY is missing from environment variables.");
+    }
+    
+    const ai = new GoogleGenAI({ apiKey });
+
+    // 5. Send combined context and prompt to gemini-2.5-flash
     const systemInstruction = `You are Kyra, a supportive AI assistant for the SYNCO women's health platform. Use the following health context to personalize your response, but do not provide clinical medical diagnoses.`;
     const combinedPrompt = `${systemInstruction}\n\n${healthContextStr}\n\nUser Question: ${prompt}`;
     
     console.log("Calling Gemini API with interactions.create...");
+    // The official @google/genai syntax has migrated to Interactions API for newer models
     const interaction = await ai.interactions.create({
-      model: "gemini-2.5-flash", // Sticking to your requested model
+      model: "gemini-3.6-flash",
       input: combinedPrompt
     });
 

@@ -13,7 +13,7 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Users collection: Only the authenticated user matching userId can read/write
+    // Phase 1 & 3: Users collection
     match /users/{userId} {
       allow read, write: if isOwner(userId);
       
@@ -21,20 +21,55 @@ service cloud.firestore {
       match /daily_logs/{dateString} {
         allow read, write: if isOwner(userId);
       }
+      
+      // Health summaries subcollection
+      match /health_summaries/{summaryId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
-    // Appointments collection: Only readable by the patient or doctor
+    // Phase 1 & 3: Doctors collection
+    match /doctors/{doctorId} {
+      allow read: if true; // Publicly readable profiles
+      allow write: if isOwner(doctorId); // Writable only by the verified doctor
+    }
+
+    // Phase 1 & 3: Appointments collection
     match /appointments/{appointmentId} {
-      allow read, write: if isAuthenticated() && (
+      // Allow read/update/delete if the user is either the patient or the doctor on the EXISTING document
+      allow read, update, delete: if isAuthenticated() && (
         request.auth.uid == resource.data.patientId || 
         request.auth.uid == resource.data.doctorId
       );
+      // Allow create if the user is setting themselves as the patient or doctor on the NEW document
+      allow create: if isAuthenticated() && (
+        request.auth.uid == request.resource.data.patientId || 
+        request.auth.uid == request.resource.data.doctorId
+      );
     }
 
-    // Whisper Room posts
+    // Real-Time Chat Engine
+    match /chats/{chatId} {
+      allow read, update, delete: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      
+      match /messages/{messageId} {
+        // Enforce that the user must be a participant in the parent chat room
+        allow read, write: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      }
+    }
+
+    // Phase 1 & 3: Whisper Room posts
     match /whisper_posts/{postId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && request.auth.uid == request.resource.data.authorId;
+    }
+    
+    // Phase 3: Learn Content
+    match /learn_content/{articleId} {
+      allow read: if true; // Publicly readable educational articles
+      allow write: if false; // Only written via Admin SDK/backend
     }
 
     // Default deny
