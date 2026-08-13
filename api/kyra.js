@@ -93,11 +93,11 @@ module.exports = async (req, res) => {
       // Safely strip the "data:image/jpeg;base64," prefix if the frontend sends it
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
       inputPayload = [
-        combinedPrompt,
-        { inlineData: { data: cleanBase64, mimeType: "image/jpeg" } }
+        { type: 'text', text: combinedPrompt },
+        { type: 'image', data: cleanBase64, mime_type: "image/jpeg" }
       ];
     } else {
-      inputPayload = combinedPrompt;
+      inputPayload = { type: 'text', text: combinedPrompt };
     }
 
     console.log("Calling Gemini API with interactions.create...");
