@@ -31,7 +31,7 @@ module.exports = async (req, res) => {
     }
 
     // 2. Initialize Gemini AI
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : "";
     if (!apiKey) {
       throw new Error("Missing GEMINI_API_KEY environment variable.");
     }

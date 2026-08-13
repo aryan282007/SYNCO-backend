@@ -57,7 +57,7 @@ module.exports = async (req, res) => {
 
     // 6. Query Gemini 3.6 Flash
     console.log("Sending sanitized text to Gemini AI...");
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : "";
     const ai = new GoogleGenAI({ apiKey });
 
     const systemInstruction = `

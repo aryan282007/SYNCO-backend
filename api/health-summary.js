@@ -46,7 +46,7 @@ module.exports = async (req, res) => {
     logsSnapshot.forEach(doc => { logsStr += `Date: ${doc.id}, Data: ${JSON.stringify(doc.data())}\n`; });
 
     // 2. Query Gemini AI for structured summary
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : "";
     const ai = new GoogleGenAI({ apiKey });
 
     const systemInstruction = `
