@@ -43,8 +43,8 @@ module.exports = async (req, res) => {
       admin.initializeApp(credentialConfig);
     }
     const db = admin.firestore();
-    // 3. Accept userId and prompt from the request body
-    const { userId, prompt } = req.body;
+    // 3. Accept userId, prompt, and optional imageBase64 from the request body
+    const { userId, prompt, imageBase64 } = req.body;
 
     if (!userId || !prompt) {
       return res.status(400).json({ error: "Missing required fields: userId and prompt." });
@@ -88,11 +88,23 @@ module.exports = async (req, res) => {
     const systemInstruction = `You are Kyra, a supportive AI assistant for the SYNCO women's health platform. Use the following health context to personalize your response, but do not provide clinical medical diagnoses.`;
     const combinedPrompt = `${systemInstruction}\n\n${healthContextStr}\n\nUser Question: ${prompt}`;
     
+    let inputPayload;
+    if (imageBase64) {
+      // Safely strip the "data:image/jpeg;base64," prefix if the frontend sends it
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      inputPayload = [
+        combinedPrompt,
+        { inlineData: { data: cleanBase64, mimeType: "image/jpeg" } }
+      ];
+    } else {
+      inputPayload = combinedPrompt;
+    }
+
     console.log("Calling Gemini API with interactions.create...");
     // The official @google/genai syntax has migrated to Interactions API for newer models
     const interaction = await ai.interactions.create({
       model: "gemini-3.6-flash",
-      input: combinedPrompt
+      input: inputPayload
     });
 
     const aiText = interaction.output_text;
