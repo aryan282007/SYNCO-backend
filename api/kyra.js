@@ -43,8 +43,8 @@ module.exports = async (req, res) => {
       admin.initializeApp(credentialConfig);
     }
     const db = admin.firestore();
-    // 3. Accept userId, prompt, and optional imageBase64 from the request body
-    const { userId, prompt, imageBase64 } = req.body;
+    // 3. Accept userId, prompt, and optional imageBase64/fileBase64 from the request body
+    const { userId, prompt, imageBase64, fileBase64, isPdf } = req.body;
 
     if (!userId || !prompt) {
       return res.status(400).json({ error: "Missing required fields: userId and prompt." });
@@ -95,6 +95,13 @@ module.exports = async (req, res) => {
       inputPayload = [
         { type: 'text', text: combinedPrompt },
         { type: 'image', data: cleanBase64, mime_type: "image/jpeg" }
+      ];
+    } else if (fileBase64 && isPdf) {
+      // Safely strip any base64 prefix
+      const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '');
+      inputPayload = [
+        { type: 'text', text: combinedPrompt },
+        { type: 'document', data: cleanBase64, mime_type: "application/pdf" }
       ];
     } else {
       inputPayload = { type: 'text', text: combinedPrompt };

@@ -31,19 +31,19 @@ service cloud.firestore {
     // Phase 1 & 3: Doctors collection
     match /doctors/{doctorId} {
       allow read: if true; // Publicly readable profiles
-      allow write: if isOwner(doctorId); // Writable only by the verified doctor
+      allow write: if isAuthenticated(); // Allow any authenticated user to write for seeding purposes
     }
 
-    // Phase 1 & 3: Appointments collection
-    match /appointments/{appointmentId} {
+    // Phase 1 & 3: Bookings collection
+    match /bookings/{bookingId} {
       // Allow read/update/delete if the user is either the patient or the doctor on the EXISTING document
       allow read, update, delete: if isAuthenticated() && (
-        request.auth.uid == resource.data.patientId || 
+        request.auth.uid == resource.data.userId || 
         request.auth.uid == resource.data.doctorId
       );
       // Allow create if the user is setting themselves as the patient or doctor on the NEW document
       allow create: if isAuthenticated() && (
-        request.auth.uid == request.resource.data.patientId || 
+        request.auth.uid == request.resource.data.userId || 
         request.auth.uid == request.resource.data.doctorId
       );
     }
@@ -66,10 +66,10 @@ service cloud.firestore {
       allow write: if isAuthenticated() && request.auth.uid == request.resource.data.authorId;
     }
     
-    // Phase 3: Learn Content
-    match /learn_content/{articleId} {
+    // Phase 3: Learn Content (Pink Corner Articles)
+    match /articles/{articleId} {
       allow read: if true; // Publicly readable educational articles
-      allow write: if false; // Only written via Admin SDK/backend
+      allow write: if isAuthenticated(); // Allow seeding
     }
 
     // Default deny
