@@ -1,5 +1,6 @@
 const admin = require("firebase-admin");
 const { GoogleGenAI } = require("@google/genai");
+const { verifyFirebaseToken } = require("../utils/auth");
 
 // Automatically route Firestore to the local emulator when running `vercel dev`
 if (process.env.VERCEL_ENV !== 'production' && process.env.VERCEL_ENV !== 'preview') {
@@ -43,11 +44,18 @@ module.exports = async (req, res) => {
       admin.initializeApp(credentialConfig);
     }
     const db = admin.firestore();
-    // 3. Accept userId, prompt, and optional imageBase64/fileBase64 from the request body
-    const { userId, prompt, imageBase64, fileBase64, isPdf } = req.body;
+    // 3. Authenticate the request securely
+    let userId;
+    try {
+      userId = await verifyFirebaseToken(req);
+    } catch (authError) {
+      return res.status(401).json({ error: authError.message });
+    }
 
-    if (!userId || !prompt) {
-      return res.status(400).json({ error: "Missing required fields: userId and prompt." });
+    const { prompt, imageBase64, fileBase64, isPdf } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: "Missing required field: prompt." });
     }
 
     // 4. Fetch the last 7 days of the user's daily_logs from Firestore

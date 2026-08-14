@@ -34,6 +34,14 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // Authenticate the request securely
+    let authenticatedUserId;
+    try {
+      authenticatedUserId = await verifyFirebaseToken(req);
+    } catch (authError) {
+      return res.status(401).json({ error: authError.message });
+    }
+
     const { documentUrl } = req.body;
 
     if (!documentUrl) {

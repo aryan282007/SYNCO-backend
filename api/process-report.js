@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const { verifyFirebaseToken } = require("../utils/auth");
 const { GoogleGenAI } = require("@google/genai");
 const pdfParse = require("pdf-parse");
 const { sanitizeMedicalText } = require("../utils/piiSanitizer");
@@ -41,6 +42,14 @@ module.exports = async (req, res) => {
     const bucket = admin.storage().bucket();
 
     // 2. Extract request payload
+    // Authenticate the request securely
+    let authenticatedUserId;
+    try {
+      authenticatedUserId = await verifyFirebaseToken(req);
+    } catch (authError) {
+      return res.status(401).json({ error: authError.message });
+    }
+
     const { filePath, userId } = req.body;
     if (!filePath || !userId) {
       return res.status(400).json({ error: "Missing required fields: filePath, userId" });

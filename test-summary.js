@@ -7,7 +7,7 @@ async function testHealthSummary() {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json', 'Authorization': 'Bearer TEST_TOKEN',
       },
       body: JSON.stringify({
         // These IDs match the mock data we generated in Phase 2

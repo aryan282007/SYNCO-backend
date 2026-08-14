@@ -1,4 +1,5 @@
 const { GoogleGenAI } = require("@google/genai");
+const { verifyFirebaseToken } = require("../utils/auth");
 
 // Helper function to fetch an image URL and convert it to Google GenAI's inlineData format
 async function fetchImageAsInlineData(url) {
@@ -33,6 +34,14 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // Authenticate the request securely
+    let userId;
+    try {
+      userId = await verifyFirebaseToken(req);
+    } catch (authError) {
+      return res.status(401).json({ error: authError.message });
+    }
+
     const { imageUrl } = req.body;
 
     if (!imageUrl) {

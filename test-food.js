@@ -7,7 +7,7 @@ async function testFoodAPI() {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json', 'Authorization': 'Bearer TEST_TOKEN',
       },
       body: JSON.stringify({
         // The previous Wikipedia URL was blocked by your network/firewall! 

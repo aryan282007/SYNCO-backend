@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const { verifyFirebaseToken } = require("../utils/auth");
 const { GoogleGenAI } = require("@google/genai");
 
 module.exports = async (req, res) => {
@@ -35,6 +36,14 @@ module.exports = async (req, res) => {
     const db = admin.firestore();
 
     // 3. Accept userId from the request body
+    // Authenticate the request securely
+    let authenticatedUserId;
+    try {
+      authenticatedUserId = await verifyFirebaseToken(req);
+    } catch (authError) {
+      return res.status(401).json({ error: authError.message });
+    }
+
     const { userId } = req.body;
     if (!userId) {
       return res.status(400).json({ error: "Missing userId in request body." });

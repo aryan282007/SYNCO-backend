@@ -40,7 +40,7 @@ async function testAllApis() {
     try {
       const response = await fetch(`${baseUrl}${endpoint.path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer TEST_TOKEN' },
         body: JSON.stringify(endpoint.payload)
       });
       

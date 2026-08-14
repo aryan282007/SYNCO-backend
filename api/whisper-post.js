@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const { verifyFirebaseToken } = require("../utils/auth");
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -29,6 +30,14 @@ module.exports = async (req, res) => {
       admin.initializeApp(credentialConfig);
     }
     const db = admin.firestore();
+
+    // Authenticate the request securely
+    let authenticatedUserId;
+    try {
+      authenticatedUserId = await verifyFirebaseToken(req);
+    } catch (authError) {
+      return res.status(401).json({ error: authError.message });
+    }
 
     const { authorId, content, category, isAnonymous } = req.body;
     

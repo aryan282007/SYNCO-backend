@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const { verifyFirebaseToken } = require("../utils/auth");
 const { GoogleGenAI } = require("@google/genai");
 
 module.exports = async (req, res) => {
@@ -30,6 +31,14 @@ module.exports = async (req, res) => {
       admin.initializeApp(credentialConfig);
     }
     const db = admin.firestore();
+
+    // Authenticate the request securely
+    let authenticatedUserId;
+    try {
+      authenticatedUserId = await verifyFirebaseToken(req);
+    } catch (authError) {
+      return res.status(401).json({ error: authError.message });
+    }
 
     const { patientId, appointmentId } = req.body;
     if (!patientId || !appointmentId) {
