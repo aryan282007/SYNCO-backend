@@ -51,15 +51,27 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; // Only author can edit/delete
     }
 
-    // Public Content (Articles, FAQs)
+    // Public Content (Articles, FAQs) - Publicly readable without auth
     match /articles/{articleId} {
-      allow read: if request.auth != null; // Anyone logged in can read
-      allow write: if false; // Only admins via Firebase Console/Admin SDK can write
+      allow read: if true;
+      allow write: if false; 
+    }
+    match /Articles/{articleId} {
+      allow read: if true;
+      allow write: if false; 
     }
 
     match /faqs/{faqId} {
-      allow read: if request.auth != null; // Anyone logged in can read
-      allow write: if false; // Only admins via Firebase Console/Admin SDK can write
+      allow read: if true;
+      allow write: if false;
+    }
+    match /Faqs/{faqId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /faq/{faqId} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }
