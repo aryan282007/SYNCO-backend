@@ -73,5 +73,9 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    match /learn_content/{docId} {
+      allow read: if true;
+      allow write: if false; 
+    }
   }
 }
