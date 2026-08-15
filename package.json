@@ -4,7 +4,9 @@
   "description": "Vercel Serverless Backend for SYNCO",
   "main": "api/kyra.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:api": "jest tests/api/",
+    "test:rules": "firebase emulators:exec \"jest tests/firebase/\" --project synco-test-project"
   },
   "dependencies": {
     "@google/genai": "latest",
@@ -14,5 +16,12 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.17.1",
+    "firebase-tools": "^15.27.0",
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2"
+  }
 }

@@ -3,6 +3,17 @@ const { verifyFirebaseToken } = require("../utils/auth");
 
 // Helper function to fetch an image or PDF URL and convert it to Google GenAI's inlineData format
 async function fetchFileAsInlineData(url) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch (e) {
+    throw new Error('Invalid URL provided.');
+  }
+  
+  if (parsedUrl.hostname !== 'firebasestorage.googleapis.com') {
+    throw new Error('SSRF Protection: Fetching from unauthorized domains is blocked.');
+  }
+
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch file: ${response.statusText}`);
