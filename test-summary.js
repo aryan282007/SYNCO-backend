@@ -11,8 +11,8 @@ async function testHealthSummary() {
       },
       body: JSON.stringify({
         // These IDs match the mock data we generated in Phase 2
-        patientId: "patient_diag_001",
-        appointmentId: "appt_1001",
+        userId: "patient_diag_001",
+        bookingId: "appt_1001",
       }),
     });
 

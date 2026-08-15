@@ -80,8 +80,8 @@ module.exports = async (req, res) => {
     const systemInstruction = `
       You are an advanced medical pattern detection AI for a PCOS/PCOD women's health platform.
       Analyze the provided longitudinal health data (up to 21 days).
-      Identify correlations and patterns between sleep, water intake, mood, steps, and any other logged symptoms.
-      For example, notice if reduced sleep correlates with increased anxiety or fatigue.
+      Identify correlations and patterns between sleep, water intake, mood, steps, cravings, stress, energy levels, meals, weight, and any other logged symptoms.
+      For example, notice if high stress correlates with increased cravings, or if poor sleep affects energy levels.
       Provide a highly structured summary of 2-3 key insights.
       Do NOT provide medical diagnosis. Always recommend discussing patterns with a doctor.
     `;

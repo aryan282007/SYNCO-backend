@@ -80,7 +80,7 @@ module.exports = async (req, res) => {
       logsSnapshot.forEach(doc => {
         const data = doc.data();
         const date = data.timestamp ? data.timestamp.toDate().toLocaleDateString() : doc.id;
-        healthContextStr += `- Date: ${date} | Sleep: ${data.sleep_hours?.toFixed(1) || 'N/A'} hrs | Water: ${data.water_cups || 'N/A'} cups | Mood: ${data.mood || 'N/A'} | Steps: ${data.steps || 'N/A'}\n`;
+        healthContextStr += `- Date: ${date} | Sleep: ${data.sleep_hours?.toFixed(1) || 'N/A'} hrs | Water: ${data.water_cups || 'N/A'} cups | Mood: ${data.mood || 'N/A'} | Steps: ${data.steps || 'N/A'} | Cravings: ${data.cravings || 'N/A'} | Stress: ${data.stress || 'N/A'} | Energy: ${data.energy || 'N/A'} | Meals: ${data.meals || 'N/A'} | Weight: ${data.weight || 'N/A'}\n`;
       });
     }
 
