@@ -1,8 +1,6 @@
 const admin = require("firebase-admin");
 const { verifyFirebaseToken } = require("../utils/auth");
 const { GoogleGenAI } = require("@google/genai");
-const pdfParse = require("pdf-parse");
-const { sanitizeMedicalText } = require("../utils/piiSanitizer");
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -22,7 +20,6 @@ module.exports = async (req, res) => {
     // 1. Initialize Firebase Admin SDK
     if (!admin.apps.length) {
       const projectId = process.env.FIREBASE_PROJECT_ID;
-      // Deduce the default bucket name if FIREBASE_STORAGE_BUCKET is not explicitly set
       const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`;
 
       const credentialConfig = process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY && projectId
@@ -41,8 +38,7 @@ module.exports = async (req, res) => {
     const db = admin.firestore();
     const bucket = admin.storage().bucket();
 
-    // 2. Extract request payload
-    // Authenticate the request securely
+    // 2. Extract request payload & Patch IDOR
     let authenticatedUserId;
     try {
       authenticatedUserId = await verifyFirebaseToken(req);
@@ -50,36 +46,42 @@ module.exports = async (req, res) => {
       return res.status(401).json({ error: authError.message });
     }
 
-    const { filePath, userId } = req.body;
-    if (!filePath || !userId) {
-      return res.status(400).json({ error: "Missing required fields: filePath, userId" });
+    const { filePath } = req.body;
+    const userId = authenticatedUserId; // IDOR PATCH: strict ownership
+
+    if (!filePath) {
+      return res.status(400).json({ error: "Missing required field: filePath" });
     }
 
-    // 3. Download the PDF file directly into Vercel memory
+    // 3. Download the PDF/Image file directly into Vercel memory
     console.log(`Downloading secure file from storage: ${filePath}`);
     const file = bucket.file(filePath);
     const [fileBuffer] = await file.download();
-
-    // 4. Parse the PDF to extract raw text
-    console.log("Parsing PDF data...");
-    const pdfData = await pdfParse(fileBuffer);
-    const rawText = pdfData.text;
-
-    if (!rawText) {
-      return res.status(400).json({ error: "Could not extract text from the provided PDF." });
+    
+    // 4. Convert to base64 for Gemini Multimodal
+    const base64Data = fileBuffer.toString('base64');
+    
+    // Determine mimeType heuristically from extension
+    let mimeType = "application/pdf";
+    if (filePath.toLowerCase().endsWith(".jpg") || filePath.toLowerCase().endsWith(".jpeg")) {
+        mimeType = "image/jpeg";
+    } else if (filePath.toLowerCase().endsWith(".png")) {
+        mimeType = "image/png";
     }
 
-    // 5. Sanitize PII
-    console.log("Sanitizing PII...");
-    const sanitizedText = sanitizeMedicalText(rawText);
-
-    // 6. Query Gemini 3.6 Flash
-    console.log("Sending sanitized text to Gemini AI...");
+    // 5. Query Gemini Flash natively
+    console.log("Sending file to Gemini Multimodal AI...");
     const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : "";
     const ai = new GoogleGenAI({ apiKey });
 
+    // CRITICAL: Aggressive PII Redaction Instructions
     const systemInstruction = `
-      You are a specialized medical translation AI. You will receive a sanitized laboratory report.
+      You are a specialized medical translation AI. You will receive a laboratory report or medical document.
+      
+      CRITICAL PRIVACY DIRECTIVE: You MUST scrub and ignore all Personally Identifiable Information (PII) before processing.
+      Do NOT include names, patient IDs, addresses, phone numbers, or dates of birth in your output.
+      
+      Tasks:
       1. Explain the medical terminology in simpler, easy-to-understand language.
       2. Highlight any values that appear outside standard reference ranges.
       3. CRITICAL: Do NOT provide a medical diagnosis. Always instruct the user to consult a doctor.
@@ -88,12 +90,15 @@ module.exports = async (req, res) => {
 
     const interaction = await ai.interactions.create({
       model: "gemini-3.6-flash",
-      input: `${systemInstruction}\n\nSanitized Lab Report Data:\n${sanitizedText}`
+      input: [
+        { type: "text", text: systemInstruction },
+        { type: "document", data: base64Data, mime_type: mimeType }
+      ]
     });
 
     const aiExplanation = interaction.output_text;
 
-    // 7. Save to Firestore
+    // 6. Save to Firestore securely
     const reportRef = db.collection("users").doc(userId).collection("medical_reports").doc();
     await reportRef.set({
       storagePath: filePath,
