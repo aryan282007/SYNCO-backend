@@ -50,5 +50,16 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid; // Only logged in users can create their own posts
       allow update, delete: if request.auth != null && resource.data.authorId == request.auth.uid; // Only author can edit/delete
     }
+
+    // Public Content (Articles, FAQs)
+    match /articles/{articleId} {
+      allow read: if request.auth != null; // Anyone logged in can read
+      allow write: if false; // Only admins via Firebase Console/Admin SDK can write
+    }
+
+    match /faqs/{faqId} {
+      allow read: if request.auth != null; // Anyone logged in can read
+      allow write: if false; // Only admins via Firebase Console/Admin SDK can write
+    }
   }
 }
