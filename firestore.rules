@@ -77,8 +77,9 @@ service cloud.firestore {
     // Phase 1 & 3: Bookings collection
     match /bookings/{bookingId} {
       allow read, write: if isAuthenticated() && (
-        request.auth.uid == resource.data.patientId || 
-        request.auth.uid == resource.data.doctorId ||
+        ('userId' in resource.data && request.auth.uid == resource.data.userId) ||
+        ('patientId' in resource.data && request.auth.uid == resource.data.patientId) || 
+        ('doctorId' in resource.data && request.auth.uid == resource.data.doctorId) ||
         // Allow creating the booking if the user is the patient
         (request.method == 'create' && request.auth.uid == request.resource.data.patientId)
       );
