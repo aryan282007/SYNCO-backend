@@ -13,6 +13,30 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Function to securely check if a user is a participant of a chat
+    // It gracefully handles missing chat documents and legacy schemas by falling back to the booking document.
+    function isChatParticipant(chatId) {
+      let chatExists = exists(/databases/$(database)/documents/chats/$(chatId));
+      let chatData = chatExists ? get(/databases/$(database)/documents/chats/$(chatId)).data : {};
+      
+      let inChat = chatExists && (
+        ('participants' in chatData && request.auth.uid in chatData.participants) ||
+        ('patientId' in chatData && request.auth.uid == chatData.patientId) ||
+        ('doctorId' in chatData && request.auth.uid == chatData.doctorId)
+      );
+
+      let bookingExists = exists(/databases/$(database)/documents/bookings/$(chatId));
+      let bookingData = bookingExists ? get(/databases/$(database)/documents/bookings/$(chatId)).data : {};
+
+      let inBooking = bookingExists && (
+        ('userId' in bookingData && request.auth.uid == bookingData.userId) ||
+        ('patientId' in bookingData && request.auth.uid == bookingData.patientId) ||
+        ('doctorId' in bookingData && request.auth.uid == bookingData.doctorId)
+      );
+
+      return inChat || inBooking;
+    }
+
     // Phase 1 & 3: Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
@@ -58,20 +82,10 @@ service cloud.firestore {
 
     // Real-Time Chat Engine
     match /chats/{chatId} {
-      // Allow read/write if the user is in the participants array (fallback to request for create, and old schema)
-      allow read, write: if request.auth != null && (
-        ('participants' in (resource == null ? request.resource.data : resource.data) && request.auth.uid in (resource == null ? request.resource.data.participants : resource.data.participants)) ||
-        ('patientId' in (resource == null ? request.resource.data : resource.data) && request.auth.uid == (resource == null ? request.resource.data.patientId : resource.data.patientId)) ||
-        ('doctorId' in (resource == null ? request.resource.data : resource.data) && request.auth.uid == (resource == null ? request.resource.data.doctorId : resource.data.doctorId))
-      );
+      allow read, write: if isAuthenticated() && isChatParticipant(chatId);
       
       match /messages/{messageId} {
-        // Allow read/write to the messages subcollection if they can access the parent chat (support old schema)
-        allow read, write: if request.auth != null && (
-          ('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants) ||
-          ('patientId' in get(/databases/$(database)/documents/chats/$(chatId)).data && request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.patientId) ||
-          ('doctorId' in get(/databases/$(database)/documents/chats/$(chatId)).data && request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.doctorId)
-        );
+        allow read, write: if isAuthenticated() && isChatParticipant(chatId);
       }
     }
 
