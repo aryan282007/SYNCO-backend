@@ -75,19 +75,33 @@
 
 ## `conversations` Collection
 - **Path:** `/conversations/{conversationId}`
+- **Description:** Primary 1-to-1 chat record for the conversation between two users or a patient and doctor.
 - **Fields:**
-  - `userId` (string)
-  - `doctorId` (string)
-  - `status` (string)
+  - `participants` (array of strings): authenticated UIDs that can access the conversation
+  - `lastMessage` (string, optional)
+  - `status` (string, optional)
   - `createdAt` (timestamp)
   - `updatedAt` (timestamp)
 - **Permissions:**
-  - **Read/Write:** Only the participating `userId` and `doctorId`.
+  - **Read/Update:** Authenticated user must be in `participants`.
+  - **Create:** Authenticated user must be in `request.resource.data.participants`.
 
 ### `messages` Subcollection
 - **Path:** `/conversations/{conversationId}/messages/{messageId}`
 - **Fields:**
   - `senderId` (string)
   - `text` (string)
-  - `messageType` (string)
+  - `status` (string, optional): `sent`, `delivered`, `read`
   - `createdAt` (timestamp)
+  - `updatedAt` (timestamp, optional)
+- **Permissions:**
+  - **Read:** Only authenticated participants may read.
+  - **Create:** Only the authenticated sender may create a message, and only if they are in the parent conversation's `participants`.
+  - **Update:** Restricted to participant-scoped status changes; arbitrary content overwrites are not allowed.
+
+## RTDB Chat State
+- **Path:** `/typing/{conversationId}/{uid}` and `/presence/{uid}`
+- **Purpose:** ephemeral user state used for typing indicators and online/offline presence.
+- **Permissions:**
+  - Authenticated user may only read the state relevant to them and write their own own typing/presence status.
+- **Use case:** high-frequency updates that should not consume Firestore write quotas.

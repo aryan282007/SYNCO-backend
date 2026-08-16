@@ -8,15 +8,16 @@
 ## Firebase Services Required
 - Firebase Authentication (Google, Email/password)
 - Cloud Firestore
+- Firebase Realtime Database (RTDB)
 - Firebase Storage
-- Firebase Cloud Functions
-- Firebase Cloud Messaging (FCM)
 - Firebase Security Rules & App Check
+- Firebase Cloud Messaging (FCM) for future push notifications
 
 ## Database Architecture
-- NoSQL structure via Cloud Firestore.
-- Modular collections based on bounded contexts: `users`, `healthProfiles`, `doctors`, `foodScans`, `whisperRooms`, `conversations`, `knowledgeMetadata`.
-- Subcollections used for localized, bounded data (e.g., `messages` within `conversations` or `whisperRooms`).
+- Firestore is used for persistent application data and 1-to-1 chat message history.
+- RTDB is reserved for ephemeral high-frequency state such as typing indicators and presence markers, keeping chat activity off the Firestore quota path.
+- Modular collections based on bounded contexts: `users`, `healthProfiles`, `doctors`, `appointments`, `foodScans`, `whisperRooms`, `conversations`, `knowledgeMetadata`.
+- Subcollections used for localized, bounded data (e.g., `messages` under `conversations` or `whisperRooms`).
 
 ## Authentication Architecture
 - Managed by Firebase Authentication.
@@ -56,14 +57,16 @@
 - Not shared with doctors by default; requires explicit user sharing.
 
 ## Real-Time Chat
-- Managed via Firestore real-time listeners.
-- No Socket.IO.
-- Chat documents restricted to verified participants.
+- Managed by Firestore listeners for persistent conversation history.
+- Active typing and presence use Firebase Realtime Database instead of Firestore to avoid consuming Firestore daily write quota.
+- 1-to-1 chat access is restricted to authenticated users who are listed in the conversation's `participants` array.
+- No Socket.IO or paid extensions are required.
 
 ## Security Model
-- Firestore & Storage Rules enforce strictly authenticated and authorized access.
-- Role verification relies on Custom Claims, not client data.
-- Rate limits implemented for API/Cloud Function calls.
+- Firestore & Storage Rules enforce authenticated, participant-scoped access to chat data.
+- RTDB rules restrict presence/typing writes to the signed-in user only.
+- Client-provided role values are never trusted; role checks rely on secure backend/configuration when needed.
+- Free-plan constraints are preserved by avoiding Cloud Functions/Blaze dependencies for core chat behavior.
 
 ## TODO / REQUIRES DECISION
 - Which vector database precisely to use for RAG? (Firestore vector search or external like Pinecone/Vertex AI?)

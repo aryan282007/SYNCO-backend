@@ -13,32 +13,35 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Function to securely check if a user is a participant of a chat
-    // It gracefully handles missing chat documents and legacy schemas by falling back to the booking document.
+    // Function to securely check if a user is a participant of a chat.
+    // Supports both the legacy `chats/{chatId}` shape and the newer `conversations/{conversationId}` shape.
+    function isParticipantInData(data) {
+      return data != null && (
+        ('participants' in data && request.auth.uid in data.participants) ||
+        ('patientId' in data && request.auth.uid == data.patientId) ||
+        ('doctorId' in data && request.auth.uid == data.doctorId) ||
+        ('userId' in data && request.auth.uid == data.userId)
+      );
+    }
+
     function isChatParticipant(chatId) {
       let chatExists = exists(/databases/$(database)/documents/chats/$(chatId));
-      let chatData = chatExists ? get(/databases/$(database)/documents/chats/$(chatId)).data : {};
-      
-      let inChat = chatExists && (
-        ('participants' in chatData && request.auth.uid in chatData.participants) ||
-        ('patientId' in chatData && request.auth.uid == chatData.patientId) ||
-        ('doctorId' in chatData && request.auth.uid == chatData.doctorId)
-      );
+      let chatData = chatExists ? get(/databases/$(database)/documents/chats/$(chatId)).data : null;
 
       let bookingExists = exists(/databases/$(database)/documents/bookings/$(chatId));
-      let bookingData = bookingExists ? get(/databases/$(database)/documents/bookings/$(chatId)).data : {};
+      let bookingData = bookingExists ? get(/databases/$(database)/documents/bookings/$(chatId)).data : null;
 
-      let inBooking = bookingExists && (
-        ('userId' in bookingData && request.auth.uid == bookingData.userId) ||
-        ('patientId' in bookingData && request.auth.uid == bookingData.patientId) ||
-        ('doctorId' in bookingData && request.auth.uid == bookingData.doctorId)
-      );
+      let conversationExists = exists(/databases/$(database)/documents/conversations/$(chatId));
+      let conversationData = conversationExists ? get(/databases/$(database)/documents/conversations/$(chatId)).data : null;
 
-      // Support for pre-booking inquiries where chatId is 'inquiry_{patientId}_{doctorId}'
+      let inChat = chatExists && isParticipantInData(chatData);
+      let inBooking = bookingExists && isParticipantInData(bookingData);
+      let inConversation = conversationExists && isParticipantInData(conversationData);
+
       let inInquiry = chatId.matches('^inquiry_' + request.auth.uid + '_.*') || 
                       chatId.matches('^inquiry_.*_' + request.auth.uid + '$');
 
-      return inChat || inBooking || inInquiry;
+      return inChat || inBooking || inConversation || inInquiry;
     }
 
     // Phase 1 & 3: Users collection
@@ -85,7 +88,43 @@ service cloud.firestore {
       );
     }
 
-    // Real-Time Chat Engine
+    // 1-to-1 Real-Time Chat (Firestore-backed conversations)
+    match /conversations/{conversationId} {
+      allow read, update: if request.auth != null && (
+        request.auth.uid in resource.data.participants ||
+        request.auth.uid == resource.data.patientId ||
+        request.auth.uid == resource.data.doctorId
+      );
+      allow create: if request.auth != null && (
+        request.auth.uid in request.resource.data.participants ||
+        request.auth.uid == request.resource.data.patientId ||
+        request.auth.uid == request.resource.data.doctorId
+      );
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null && (
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants ||
+          request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.patientId ||
+          request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.doctorId
+        );
+
+        allow create: if request.auth != null 
+          && request.resource.data.senderId == request.auth.uid
+          && (
+            request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants ||
+            request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.patientId ||
+            request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.doctorId
+          );
+
+        allow update: if request.auth != null && (
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants ||
+          request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.patientId ||
+          request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.doctorId
+        );
+      }
+    }
+
+    // Legacy chat engine used by the current app and older seeds.
     match /chats/{chatId} {
       allow read, write: if isAuthenticated() && isChatParticipant(chatId);
       
