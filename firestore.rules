@@ -58,12 +58,20 @@ service cloud.firestore {
 
     // Real-Time Chat Engine
     match /chats/{chatId} {
-      // Allow read/write if the user is in the participants array (fallback to request for create)
-      allow read, write: if request.auth != null && request.auth.uid in (resource == null ? request.resource.data.participants : resource.data.participants);
+      // Allow read/write if the user is in the participants array (fallback to request for create, and old schema)
+      allow read, write: if request.auth != null && (
+        ('participants' in (resource == null ? request.resource.data : resource.data) && request.auth.uid in (resource == null ? request.resource.data.participants : resource.data.participants)) ||
+        ('patientId' in (resource == null ? request.resource.data : resource.data) && request.auth.uid == (resource == null ? request.resource.data.patientId : resource.data.patientId)) ||
+        ('doctorId' in (resource == null ? request.resource.data : resource.data) && request.auth.uid == (resource == null ? request.resource.data.doctorId : resource.data.doctorId))
+      );
       
       match /messages/{messageId} {
-        // Allow read/write to the messages subcollection if they can access the parent chat
-        allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        // Allow read/write to the messages subcollection if they can access the parent chat (support old schema)
+        allow read, write: if request.auth != null && (
+          ('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants) ||
+          ('patientId' in get(/databases/$(database)/documents/chats/$(chatId)).data && request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.patientId) ||
+          ('doctorId' in get(/databases/$(database)/documents/chats/$(chatId)).data && request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.doctorId)
+        );
       }
     }
 
