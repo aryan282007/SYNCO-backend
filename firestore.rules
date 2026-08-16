@@ -58,10 +58,12 @@ service cloud.firestore {
 
     // Real-Time Chat Engine
     match /chats/{chatId} {
-      allow read, write: if isAuthenticated();
+      // Allow read/write if the user is in the participants array (fallback to request for create)
+      allow read, write: if request.auth != null && request.auth.uid in (resource == null ? request.resource.data.participants : resource.data.participants);
       
       match /messages/{messageId} {
-        allow read, write: if isAuthenticated();
+        // Allow read/write to the messages subcollection if they can access the parent chat
+        allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
       }
     }
 
