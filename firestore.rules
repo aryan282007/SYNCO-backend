@@ -34,7 +34,11 @@ service cloud.firestore {
         ('doctorId' in bookingData && request.auth.uid == bookingData.doctorId)
       );
 
-      return inChat || inBooking;
+      // Support for pre-booking inquiries where chatId is 'inquiry_{patientId}_{doctorId}'
+      let inInquiry = chatId.matches('^inquiry_' + request.auth.uid + '_.*') || 
+                      chatId.matches('^inquiry_.*_' + request.auth.uid + '$');
+
+      return inChat || inBooking || inInquiry;
     }
 
     // Phase 1 & 3: Users collection
