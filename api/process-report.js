@@ -1,6 +1,8 @@
 const admin = require("firebase-admin");
 const { verifyFirebaseToken } = require("../utils/auth");
+const { sanitizeMedicalText } = require("../utils/piiSanitizer");
 const { GoogleGenAI } = require("@google/genai");
+const pdfParse = require("pdf-parse");
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -53,24 +55,68 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "Missing required field: filePath" });
     }
 
+    // Security: Verify the path belongs to this user
+    if (!filePath.startsWith(`uploads/${userId}/`)) {
+        return res.status(403).json({ error: "Unauthorized access to file." });
+    }
+
     // 3. Download the PDF/Image file directly into Vercel memory
     console.log(`Downloading secure file from storage: ${filePath}`);
     const file = bucket.file(filePath);
-    const [fileBuffer] = await file.download();
     
-    // 4. Convert to base64 for Gemini Multimodal
-    const base64Data = fileBuffer.toString('base64');
+    // Check if file exists
+    const [exists] = await file.exists();
+    if (!exists) {
+      return res.status(404).json({ error: "File not found." });
+    }
+    
+    const [fileBuffer] = await file.download();
+
+    // Validate size (10MB max)
+    if (fileBuffer.length > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: "File too large. Maximum size is 10MB." });
+    }
     
     // Determine mimeType heuristically from extension
-    let mimeType = "application/pdf";
-    if (filePath.toLowerCase().endsWith(".jpg") || filePath.toLowerCase().endsWith(".jpeg")) {
+    let mimeType = null;
+    const lowerPath = filePath.toLowerCase();
+    if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) {
         mimeType = "image/jpeg";
-    } else if (filePath.toLowerCase().endsWith(".png")) {
+    } else if (lowerPath.endsWith(".png")) {
         mimeType = "image/png";
+    } else if (lowerPath.endsWith(".pdf")) {
+        mimeType = "application/pdf";
     }
 
-    // 5. Query Gemini Flash natively
-    console.log("Sending file to Gemini Multimodal AI...");
+    if (!mimeType) {
+      return res.status(400).json({ error: "Unsupported file type. Use JPG, PNG, or PDF." });
+    }
+
+    // 4. Extract Text & Sanitize PII
+    let processedInputs = [];
+    if (mimeType === "application/pdf") {
+      try {
+        const pdfData = await pdfParse(fileBuffer);
+        const extractedText = pdfData.text;
+        
+        if (!extractedText || extractedText.trim().length < 20) {
+          // Likely a scanned PDF with no text layer. Fall back to Gemini Multimodal
+          processedInputs.push({ inlineData: { data: fileBuffer.toString('base64'), mimeType: mimeType } });
+        } else {
+          // Text-based PDF. Sanitize and send as text.
+          const sanitizedText = sanitizeMedicalText(extractedText);
+          processedInputs.push(sanitizedText);
+        }
+      } catch (err) {
+        return res.status(400).json({ error: "Malformed PDF file." });
+      }
+    } else {
+      // Image: Send to Gemini Multimodal directly
+      processedInputs.push({ inlineData: { data: fileBuffer.toString('base64'), mimeType: mimeType } });
+    }
+
+    // 5. Query Gemini Flash
+    console.log("Sending to Gemini AI...");
     const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : "";
     const ai = new GoogleGenAI({ apiKey });
 
@@ -83,37 +129,81 @@ module.exports = async (req, res) => {
       
       Tasks:
       1. Explain the medical terminology in simpler, easy-to-understand language.
-      2. Highlight any values that appear outside standard reference ranges.
+      2. Highlight any values that appear outside standard reference ranges. Preserve original values and units.
       3. CRITICAL: Do NOT provide a medical diagnosis. Always instruct the user to consult a doctor.
-      4. Generate 2-3 specific questions the patient should ask their doctor based on this report.
+      4. Clearly state when information is insufficient.
     `;
 
-    const interaction = await ai.interactions.create({
+    // Define JSON schema for structured response
+    const responseSchema = {
+      type: "OBJECT",
+      properties: {
+        summary: { type: "STRING" },
+        parameters: {
+          type: "ARRAY",
+          items: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING" },
+              value: { type: "STRING" },
+              unit: { type: "STRING" },
+              referenceRange: { type: "STRING" },
+              status: { type: "STRING", enum: ["normal", "high", "low", "unknown"] },
+              explanation: { type: "STRING" }
+            },
+            required: ["name", "value", "status", "explanation"]
+          }
+        },
+        importantFindings: {
+          type: "ARRAY",
+          items: { type: "STRING" }
+        },
+        disclaimer: { type: "STRING" }
+      },
+      required: ["summary", "parameters", "importantFindings", "disclaimer"]
+    };
+
+    // Use current SDK method
+    const response = await ai.models.generateContent({
       model: "gemini-3.6-flash",
-      input: [
-        { type: "text", text: systemInstruction },
-        { type: "document", data: base64Data, mime_type: mimeType }
-      ]
+      contents: [
+        {
+          role: "user",
+          parts: processedInputs.map(input => (typeof input === "string" ? { text: input } : input))
+        }
+      ],
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: responseSchema
+      }
     });
 
-    const aiExplanation = interaction.output_text;
+    const aiExplanationText = response.text;
+    
+    let structuredExplanation;
+    try {
+      structuredExplanation = JSON.parse(aiExplanationText);
+    } catch (e) {
+      return res.status(500).json({ error: "Failed to parse structured response from AI." });
+    }
 
     // 6. Save to Firestore securely
     const reportRef = db.collection("users").doc(userId).collection("medical_reports").doc();
     await reportRef.set({
       storagePath: filePath,
-      simplifiedExplanation: aiExplanation,
+      simplifiedExplanation: structuredExplanation,
       processedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     return res.status(200).json({ 
       success: true, 
       reportId: reportRef.id,
-      explanation: aiExplanation 
+      explanation: structuredExplanation 
     });
 
   } catch (error) {
     console.error("Error in Process Report API:", error);
-    return res.status(500).json({ error: "An internal server error occurred.", details: error.message });
+    return res.status(500).json({ error: "An internal server error occurred." }); // DO NOT EXPOSE SECRETS
   }
 };
