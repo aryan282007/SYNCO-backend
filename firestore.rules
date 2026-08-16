@@ -11,52 +11,33 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
       
-      // Cascading rules for subcollections (daily_logs, medical_reports, health_summaries)
+      // Allow any authenticated user to send notifications to others (e.g. Doctors to Patients)
+      match /notifications/{notificationId} {
+        allow read, write: if request.auth != null;
+      }
+      
+      // Cascading rules for other subcollections (daily_logs, medical_reports, health_summaries)
       match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
     // Bookings collection
-    // Patients and Doctors can only access bookings they are a part of
     match /bookings/{bookingId} {
       allow read, write: if request.auth != null && (
         request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.patientId ||
         request.auth.uid == resource.data.doctorId ||
-        // Allow creation if the creator is setting themselves as the userId or doctorId
-        (request.method == 'create' && (request.auth.uid == request.resource.data.userId || request.auth.uid == request.resource.data.doctorId))
+        (request.method == 'create' && (request.auth.uid == request.resource.data.userId || request.auth.uid == request.resource.data.patientId || request.auth.uid == request.resource.data.doctorId))
       );
     }
     
-    // Conversations and Messages (Old)
-    match /conversations/{conversationId} {
-      allow read, write: if request.auth != null && (
-        request.auth.uid == resource.data.userId || 
-        request.auth.uid == resource.data.doctorId ||
-        (request.method == 'create' && (request.auth.uid == request.resource.data.userId || request.auth.uid == request.resource.data.doctorId))
-      );
-      
-      match /messages/{messageId} {
-        allow read, write: if request.auth != null && (
-          request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.userId ||
-          request.auth.uid == get(/databases/$(database)/documents/conversations/$(conversationId)).data.doctorId
-        );
-      }
-    }
-
-    // Real-Time Chat Engine (New Frontend Standard)
+    // Real-Time Chat Engine
     match /chats/{chatId} {
-      allow read, write: if request.auth != null && (
-        request.auth.uid == resource.data.patientId || 
-        request.auth.uid == resource.data.doctorId ||
-        (request.method == 'create' && (request.auth.uid == request.resource.data.patientId || request.auth.uid == request.resource.data.doctorId))
-      );
+      allow read, write: if request.auth != null; // Frontend standard
       
       match /messages/{messageId} {
-        allow read, write: if request.auth != null && (
-          request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.patientId ||
-          request.auth.uid == get(/databases/$(database)/documents/chats/$(chatId)).data.doctorId
-        );
+        allow read, write: if request.auth != null; // Frontend standard
       }
     }
 
