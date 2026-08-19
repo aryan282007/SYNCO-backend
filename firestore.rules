@@ -79,7 +79,12 @@ service cloud.firestore {
 
     // Phase 1 & 3: Bookings collection
     match /bookings/{bookingId} {
-      allow read, update, delete: if isAuthenticated() && resource != null && (
+      allow read: if isAuthenticated() && (
+        ('userId' in resource.data && request.auth.uid == resource.data.userId) ||
+        ('patientId' in resource.data && request.auth.uid == resource.data.patientId) || 
+        ('doctorId' in resource.data && request.auth.uid == resource.data.doctorId)
+      );
+      allow update, delete: if isAuthenticated() && resource != null && (
         ('userId' in resource.data && request.auth.uid == resource.data.userId) ||
         ('patientId' in resource.data && request.auth.uid == resource.data.patientId) || 
         ('doctorId' in resource.data && request.auth.uid == resource.data.doctorId)

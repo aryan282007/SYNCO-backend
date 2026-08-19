@@ -14,6 +14,15 @@
       "fields": [
         { "fieldPath": "conversationId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+    },
+    {
+      "collectionGroup": "knowledge_base",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": { "dimension": 768, "flat": {} }
+        }
       ]
     }
   ],
