@@ -58,28 +58,36 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "Missing required field: prompt." });
     }
 
-    // 4. Fetch the last 7 days of the user's daily_logs from Firestore
+    // 4. Fetch the logs and sort in memory to prevent dropping logs without a timestamp field
     console.log(`Fetching health context for user: ${userId}`);
     
-    // We calculate 7 days ago
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const timestampLimit = admin.firestore.Timestamp.fromDate(sevenDaysAgo);
-
     const logsSnapshot = await db.collection("users")
       .doc(userId)
       .collection("daily_logs")
-      .where("timestamp", ">=", timestampLimit)
-      .orderBy("timestamp", "desc")
       .get();
 
+    let logs = [];
+    logsSnapshot.forEach(doc => {
+      logs.push({ id: doc.id, data: doc.data() });
+    });
+
+    // Sort descending by timestamp or document ID
+    logs.sort((a, b) => {
+      const timeA = a.data.timestamp ? a.data.timestamp.toDate().getTime() : new Date(a.id).getTime();
+      const timeB = b.data.timestamp ? b.data.timestamp.toDate().getTime() : new Date(b.id).getTime();
+      return timeB - timeA;
+    });
+
+    // Keep the most recent 7 logs
+    logs = logs.slice(0, 7);
+
     let healthContextStr = "User Health Data (Last 7 Days):\n";
-    if (logsSnapshot.empty) {
+    if (logs.length === 0) {
       healthContextStr += "No recent health logs available.\n";
     } else {
-      logsSnapshot.forEach(doc => {
-        const data = doc.data();
-        const date = data.timestamp ? data.timestamp.toDate().toLocaleDateString() : doc.id;
+      logs.forEach(log => {
+        const data = log.data;
+        const date = data.timestamp ? data.timestamp.toDate().toLocaleDateString() : log.id;
         healthContextStr += `- Date: ${date} | Sleep: ${data.sleep_hours?.toFixed(1) || 'N/A'} hrs | Water: ${data.water_cups || 'N/A'} cups | Mood: ${data.mood || 'N/A'} | Steps: ${data.steps || 'N/A'} | Cravings: ${data.cravings || 'N/A'} | Stress: ${data.stress || 'N/A'} | Energy: ${data.energy || 'N/A'} | Meals: ${data.meals || 'N/A'} | Weight: ${data.weight || 'N/A'}\n`;
       });
     }

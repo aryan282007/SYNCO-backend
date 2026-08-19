@@ -46,24 +46,33 @@ module.exports = async (req, res) => {
 
     const userId = authenticatedUserId;
 
-    // 4. Fetch the last 21 days of logs for robust pattern detection
-    const twentyOneDaysAgo = new Date();
-    twentyOneDaysAgo.setDate(twentyOneDaysAgo.getDate() - 21);
-    const timestampLimit = admin.firestore.Timestamp.fromDate(twentyOneDaysAgo);
-
+    // 4. Fetch logs and sort in memory to prevent dropping logs without a timestamp field
     const logsSnapshot = await db.collection("users").doc(userId)
       .collection("daily_logs")
-      .where("timestamp", ">=", timestampLimit)
-      .orderBy("timestamp", "asc") // Ascending order is better for temporal AI analysis
       .get();
 
-    if (logsSnapshot.empty) {
+    let logs = [];
+    logsSnapshot.forEach(doc => {
+      logs.push({ id: doc.id, data: doc.data() });
+    });
+
+    // Sort descending by timestamp or document ID (which is usually a date string)
+    logs.sort((a, b) => {
+      const timeA = a.data.timestamp ? a.data.timestamp.toDate().getTime() : new Date(a.id).getTime();
+      const timeB = b.data.timestamp ? b.data.timestamp.toDate().getTime() : new Date(b.id).getTime();
+      return timeB - timeA;
+    });
+
+    // Keep the most recent 21 logs, then reverse to ascending order for temporal AI analysis
+    logs = logs.slice(0, 21).reverse();
+
+    if (logs.length === 0) {
       return res.status(200).json({ success: true, response: "Not enough data yet to detect patterns. Keep logging!" });
     }
 
     let healthContextStr = "User Health Data (Chronological over up to 21 days):\n";
-    logsSnapshot.forEach(doc => {
-      healthContextStr += `Date: ${doc.id}, Data: ${JSON.stringify(doc.data())}\n`;
+    logs.forEach(log => {
+      healthContextStr += `Date: ${log.id}, Data: ${JSON.stringify(log.data)}\n`;
     });
 
     // 5. Initialize Gemini AI
