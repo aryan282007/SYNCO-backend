@@ -25,30 +25,50 @@ if (!apiKey) {
 }
 const ai = new GoogleGenAI({ apiKey });
 
-const sampleKnowledge = [
-  "PCOS (Polycystic Ovary Syndrome) is a hormonal disorder common among women of reproductive age.",
-  "Common symptoms of PCOS include irregular periods, excess androgen, and polycystic ovaries.",
-  "Managing stress, maintaining a healthy diet, and regular exercise are recommended for PCOS.",
-  "High sugar cravings and insulin resistance are frequently associated with PCOS.",
-  "Adequate hydration (at least 8 cups a day) is important for overall hormonal balance and reducing fatigue."
-];
+const fs = require('fs');
+const path = require('path');
+
+async function getKnowledgeChunks() {
+  const notebookPath = path.join(process.cwd(), 'pcos-diagnosis.ipynb');
+  const notebookContent = fs.readFileSync(notebookPath, 'utf8');
+  const notebook = JSON.parse(notebookContent);
+
+  let knowledgeChunks = [];
+  for (const cell of notebook.cells) {
+    if (cell.cell_type === 'markdown' && cell.source) {
+      const text = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
+      const cleanText = text
+        .replace(/!\[.*?\]\(.*?\)/g, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\n+/g, ' ')
+        .trim();
+      
+      // Filter out overly short structural headers
+      if (cleanText.length > 50 && !cleanText.toLowerCase().includes("importing library")) {
+        knowledgeChunks.push(cleanText);
+      }
+    }
+  }
+  return knowledgeChunks;
+}
 
 async function seedKnowledge() {
   console.log("Starting knowledge embedding and upload...");
 
-  for (const text of sampleKnowledge) {
+  const chunks = await getKnowledgeChunks();
+  console.log(`Found ${chunks.length} knowledge chunks from dataset.`);
+
+  for (const text of chunks) {
     try {
-      console.log(`Embedding: "${text.substring(0, 30)}..."`);
+      console.log(`Embedding: "${text.substring(0, 50)}..."`);
       
       const response = await ai.models.embedContent({
         model: 'text-embedding-004',
         contents: text
       });
 
-      // The embedding array from GenAI SDK
       const embeddingArray = response.embeddings[0].values;
 
-      // Ensure dimension is 768
       if (embeddingArray.length !== 768) {
         throw new Error(`Expected 768 dimensions, got ${embeddingArray.length}`);
       }
