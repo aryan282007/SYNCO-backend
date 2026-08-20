@@ -101,7 +101,7 @@ module.exports = async (req, res) => {
     const ai = new GoogleGenAI({ apiKey });
 
     // 5. Send combined context and prompt to gemini-2.5-flash
-    const systemInstruction = `You are Kyra, a supportive AI assistant for the SYNCO women's health platform. Use the following health context to personalize your response, but do not provide clinical medical diagnoses.`;
+    const systemInstruction = `You are Kyra, a supportive AI assistant for the SYNCO women's health platform. Use the following health context to personalize your response, but do not provide clinical medical diagnoses. If the user asks about topics completely unrelated to women's health, wellness, or the SYNCO platform, politely decline to answer and guide them back to health-related topics.`;
     const combinedPrompt = `${systemInstruction}\n\n${healthContextStr}\n\nUser Question: ${prompt}`;
     
     let inputPayload;
