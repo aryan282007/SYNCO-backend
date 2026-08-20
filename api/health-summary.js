@@ -40,13 +40,14 @@ module.exports = async (req, res) => {
       return res.status(401).json({ error: authError.message });
     }
 
-    const { userId, bookingId } = req.body;
-    if (!userId || !bookingId) {
-      return res.status(400).json({ error: "Missing userId or bookingId" });
+    const patientId = req.body.patientId || req.body.userId;
+    const appointmentId = req.body.appointmentId || req.body.bookingId;
+    if (!patientId || !appointmentId) {
+      return res.status(400).json({ error: "Missing required fields: patientId and appointmentId are required." });
     }
 
     // 1. Fetch Patient Profile & Logs
-    const patientDoc = await db.collection("users").doc(userId).get();
+    const patientDoc = await db.collection("users").doc(patientId).get();
     if (!patientDoc.exists) {
       return res.status(404).json({ error: "Patient not found" });
     }
@@ -54,7 +55,7 @@ module.exports = async (req, res) => {
     // Fetch last 14 days of logs
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-    const logsSnapshot = await db.collection("users").doc(userId)
+    const logsSnapshot = await db.collection("users").doc(patientId)
       .collection("daily_logs")
       .where("timestamp", ">=", admin.firestore.Timestamp.fromDate(fourteenDaysAgo))
       .orderBy("timestamp", "asc")
@@ -91,16 +92,16 @@ module.exports = async (req, res) => {
     const structuredSummary = JSON.parse(rawOutput);
 
     // 3. Save Summary to Firestore
-    const summaryRef = db.collection("users").doc(userId).collection("health_summaries").doc(bookingId);
+    const summaryRef = db.collection("users").doc(patientId).collection("health_summaries").doc(appointmentId);
     await summaryRef.set({
       ...structuredSummary,
-      bookingId: bookingId,
+      appointmentId: appointmentId,
       generatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // 4. Link Summary to Appointment
-    await db.collection("bookings").doc(bookingId).update({
-      summaryId: bookingId, // using bookingId as the summaryId for 1:1 mapping
+    await db.collection("appointments").doc(appointmentId).update({
+      summaryId: appointmentId, // using appointmentId as the summaryId for 1:1 mapping
       status: "ready_for_review"
     });
 
