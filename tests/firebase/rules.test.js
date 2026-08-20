@@ -58,12 +58,12 @@ describe('Firestore Security Rules', () => {
     });
   });
 
-  describe('Bookings/Appointments Collection', () => {
+  describe('Appointments Collection', () => {
     it('allows a doctor to read a booking they are assigned to', async () => {
       // Setup the booking document using admin context (bypasses rules)
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore();
-        await db.collection('bookings').doc('booking_1').set({
+        await db.collection('appointments').doc('appointment_1').set({
           doctorId: 'doctor_X',
           patientId: 'patient_A'
         });
@@ -72,14 +72,14 @@ describe('Firestore Security Rules', () => {
       const doctorContext = testEnv.authenticatedContext('doctor_X');
       const db = doctorContext.firestore();
 
-      const docRef = db.collection('bookings').doc('booking_1');
+      const docRef = db.collection('appointments').doc('appointment_1');
       await assertSucceeds(docRef.get());
     });
 
     it('denies a doctor from reading a booking they are NOT assigned to', async () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore();
-        await db.collection('bookings').doc('booking_2').set({
+        await db.collection('appointments').doc('appointment_2').set({
           doctorId: 'doctor_Y',
           patientId: 'patient_A'
         });
@@ -88,7 +88,7 @@ describe('Firestore Security Rules', () => {
       const doctorContext = testEnv.authenticatedContext('doctor_X');
       const db = doctorContext.firestore();
 
-      const docRef = db.collection('bookings').doc('booking_2');
+      const docRef = db.collection('appointments').doc('appointment_2');
       await assertFails(docRef.get());
     });
   });
